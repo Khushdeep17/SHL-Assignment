@@ -1,4 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
 from pydantic import BaseModel, Field
 
 from agent import get_reply
@@ -9,7 +13,21 @@ from agent import get_reply
 
 app = FastAPI(
     title="SHL Assessment Recommendation Agent",
-    version="1.0.0"
+    version="2.0.0"
+)
+
+# =========================================================
+# STATIC FILES + TEMPLATES
+# =========================================================
+
+app.mount(
+    "/static",
+    StaticFiles(directory="static"),
+    name="static"
+)
+
+templates = Jinja2Templates(
+    directory="templates"
 )
 
 # =========================================================
@@ -17,21 +35,46 @@ app = FastAPI(
 # =========================================================
 
 class Message(BaseModel):
-    role: str = Field(..., description="user or assistant")
+
+    role: str = Field(
+        ...,
+        description="user or assistant"
+    )
+
     content: str
 
+
 class ChatRequest(BaseModel):
+
     messages: list[Message]
 
+
 class Assessment(BaseModel):
+
     name: str
     url: str
     test_type: str
 
+
 class ChatResponse(BaseModel):
+
     reply: str
     recommendations: list[Assessment]
     end_of_conversation: bool
+
+# =========================================================
+# ROOT FRONTEND
+# =========================================================
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request
+        }
+    )
 
 # =========================================================
 # HEALTH ENDPOINT
@@ -48,7 +91,10 @@ def health():
 # CHAT ENDPOINT
 # =========================================================
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post(
+    "/chat",
+    response_model=ChatResponse
+)
 def chat(req: ChatRequest):
 
     # =====================================================
@@ -66,7 +112,10 @@ def chat(req: ChatRequest):
     # ROLE VALIDATION
     # =====================================================
 
-    valid_roles = {"user", "assistant"}
+    valid_roles = {
+        "user",
+        "assistant"
+    }
 
     for msg in req.messages:
 
@@ -78,10 +127,9 @@ def chat(req: ChatRequest):
             )
 
     # =====================================================
-    # TURN LIMIT SAFETY
+    # TURN LIMIT
     # =====================================================
 
-    # Spec: max 8 turns total
     if len(req.messages) > 8:
 
         return ChatResponse(
@@ -116,9 +164,10 @@ def chat(req: ChatRequest):
 
     except Exception as e:
 
-        print(f"ERROR: {e}")
+        print("\n========== BACKEND ERROR ==========")
+        print(str(e))
+        print("===================================\n")
 
-        # graceful failure
         return ChatResponse(
             reply=(
                 "I encountered an issue while processing your request. "
@@ -136,11 +185,11 @@ def chat(req: ChatRequest):
 
     for rec in result.get("recommendations", []):
 
-        # ensure schema consistency
         if (
-            "name" in rec and
-            "url" in rec and
-            "test_type" in rec
+            isinstance(rec, dict)
+            and "name" in rec
+            and "url" in rec
+            and "test_type" in rec
         ):
 
             recommendations.append(

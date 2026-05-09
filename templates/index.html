@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8" />
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    />
+
+    <title>
+        SHL Assessment Recommendation Agent
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    />
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- ======================================== -->
+    <!-- HEADER -->
+    <!-- ======================================== -->
+
+    <div class="header">
+
+        <h1>
+            SHL Assessment Recommendation Agent
+        </h1>
+
+        <p>
+            Conversational AI assistant for recommending SHL assessments.
+        </p>
+
+    </div>
+
+    <!-- ======================================== -->
+    <!-- TOP BAR -->
+    <!-- ======================================== -->
+
+    <div class="top-bar">
+
+        <button
+            class="new-chat-btn"
+            onclick="newChat()"
+        >
+            + New Chat
+        </button>
+
+    </div>
+
+    <!-- ======================================== -->
+    <!-- CHAT -->
+    <!-- ======================================== -->
+
+    <div
+        id="chat-box"
+        class="chat-box"
+    >
+
+        <div class="message assistant">
+
+            Hello! 👋<br><br>
+
+            Describe the hiring requirement, role,
+            seniority level, or assessment need.
+
+        </div>
+
+    </div>
+
+    <!-- ======================================== -->
+    <!-- INPUT -->
+    <!-- ======================================== -->
+
+    <div class="input-area">
+
+        <input
+            type="text"
+            id="user-input"
+            placeholder="Describe the role or hiring requirement..."
+        />
+
+        <button onclick="sendMessage()">
+            Send
+        </button>
+
+    </div>
+
+</div>
+
+<!-- ======================================== -->
+<!-- SCRIPT -->
+<!-- ======================================== -->
+
+<script>
+
+let messages = [];
+
+/* =========================================
+   RESET CHAT
+========================================= */
+
+function newChat() {
+
+    messages = [];
+
+    const chatBox =
+        document.getElementById("chat-box");
+
+    chatBox.innerHTML = `
+
+        <div class="message assistant">
+
+            Hello! 👋<br><br>
+
+            Describe the hiring requirement, role,
+            seniority level, or assessment need.
+
+        </div>
+    `;
+}
+
+/* =========================================
+   ADD MESSAGE
+========================================= */
+
+function addMessage(role, text) {
+
+    const chatBox = document.getElementById("chat-box");
+
+    const messageDiv = document.createElement("div");
+
+    messageDiv.className = `message ${role}`;
+
+    messageDiv.innerHTML = text;
+
+    chatBox.appendChild(messageDiv);
+
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+/* =========================================
+   ADD RECOMMENDATIONS
+========================================= */
+
+function addRecommendations(recommendations) {
+
+    if (!recommendations || recommendations.length === 0) {
+        return;
+    }
+
+    const chatBox = document.getElementById("chat-box");
+
+    recommendations.forEach(rec => {
+
+        const card = document.createElement("div");
+
+        card.className = "recommendation-card";
+
+        card.innerHTML = `
+
+            <div class="rec-title">
+                ${rec.name}
+            </div>
+
+            <div class="rec-type">
+                Type: ${rec.test_type}
+            </div>
+
+            <a
+                href="${rec.url}"
+                target="_blank"
+            >
+                View Assessment →
+            </a>
+        `;
+
+        chatBox.appendChild(card);
+    });
+
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+/* =========================================
+   SEND MESSAGE
+========================================= */
+
+async function sendMessage() {
+
+    const input = document.getElementById("user-input");
+
+    const text = input.value.trim();
+
+    if (!text) {
+        return;
+    }
+
+    addMessage(
+        "user",
+        text
+    );
+
+    messages.push({
+        role: "user",
+        content: text
+    });
+
+    input.value = "";
+
+    /* =====================================
+       LOADING
+    ===================================== */
+
+    const loading = document.createElement("div");
+
+    loading.className = "message assistant";
+
+    loading.id = "loading";
+
+    loading.innerHTML =
+        "Thinking<span class='dots'></span>";
+
+    document
+        .getElementById("chat-box")
+        .appendChild(loading);
+
+    try {
+
+        const response = await fetch("/chat", {
+
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                messages: messages
+            })
+        });
+
+        const data = await response.json();
+
+        const loadingElement =
+            document.getElementById("loading");
+
+        if (loadingElement) {
+            loadingElement.remove();
+        }
+
+        addMessage(
+            "assistant",
+            data.reply
+        );
+
+        addRecommendations(
+            data.recommendations
+        );
+
+        messages.push({
+            role: "assistant",
+            content: data.reply
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        const loadingElement =
+            document.getElementById("loading");
+
+        if (loadingElement) {
+            loadingElement.remove();
+        }
+
+        addMessage(
+            "assistant",
+            "Something went wrong while contacting the server."
+        );
+    }
+}
+
+/* =========================================
+   ENTER KEY SUPPORT
+========================================= */
+
+document
+    .getElementById("user-input")
+    .addEventListener("keypress", function(event) {
+
+        if (event.key === "Enter") {
+
+            sendMessage();
+        }
+    });
+
+</script>
+
+</body>
+</html>
