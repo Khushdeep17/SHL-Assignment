@@ -19,7 +19,10 @@ bm25 = data["bm25"]
 # LOAD EMBEDDING MODEL
 # =========================================================
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = SentenceTransformer(
+    "all-MiniLM-L6-v2",
+    device="cpu"
+)
 
 # =========================================================
 # QUERY EXPANSION HINTS
