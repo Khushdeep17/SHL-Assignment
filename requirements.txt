@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sentence-transformers
+faiss-cpu
+rank-bm25
+numpy
+python-dotenv
+groq
+requests
