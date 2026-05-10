@@ -23,7 +23,7 @@ The API exposes two endpoints — `GET /health` and `POST /chat` — and is full
 POST /chat (full history)
         │
         ▼
-  Intent Detection          ← rule-based: compare / clarify / refuse / end
+  Intent Detection          ← rule-based: refuse / legal_refuse / compare / end / clarify / recommend
         │
         ▼
   Hybrid Retrieval          ← BM25 (0.35) + FAISS semantic (0.65) + heuristic boosting
@@ -44,9 +44,9 @@ The most important architectural decision was shifting recommendation control aw
 
 ## Catalog Ingestion
 
-The provided SHL catalog JSON was used directly. Each item was enriched with a normalized `test_type` code mapped from its `keys` array (`K`, `P`, `A`, `B`, `S`, `C`, `D`) and a composite `search_text` field combining name, description, job levels, and keys — used for both embedding and BM25 indexing.
+The provided SHL catalog JSON was used directly. Each item was enriched with a `test_type` code derived from its `keys` array and a composite `search_text` field combining name, description, job levels, and keys — used for both embedding and BM25 indexing.
 
-**Embedding model:** `sentence-transformers/all-MiniLM-L6-v2` → FAISS `IndexFlatIP` (cosine via L2 normalization). BM25 via `rank-bm25`. Both indexes are built at startup and cached.
+**Embedding model:** `sentence-transformers/all-MiniLM-L6-v2` → FAISS `IndexFlatIP` (cosine via L2 normalization). BM25 via `rank-bm25`. Both indexes are built once at startup and cached to disk.
 
 ---
 
@@ -54,9 +54,9 @@ The provided SHL catalog JSON was used directly. Each item was enriched with a n
 
 **Why hybrid search?** Semantic search captures intent but misses exact names. BM25 catches abbreviations (OPQ, GSA, DSI, SVAR) but misses paraphrase. Combining both at 65/35 weight outperformed either alone on the public traces.
 
-**Query expansion:** Domain-specific trigger→synonym maps for leadership, graduate, contact center, safety, admin, and healthcare roles — plus common SHL abbreviations. Tuned iteratively using the provided sample traces.
+**Query expansion:** Domain-specific trigger→synonym maps for leadership, graduate, contact center, safety, admin, and healthcare roles — plus common SHL abbreviations (GSA, OPQ, DSI, SVAR, MQ, SJT). Tuned iteratively using the provided sample traces.
 
-**Heuristic boosting:** Post-combination score adjustments for high-signal patterns — e.g. `"cxo"` → +0.30 for OPQ32r, `"contact center"` → +0.30 for SVAR, `"safety"` → +0.30 for DSI. Learned from trace patterns.
+**Heuristic boosting:** Post-combination score adjustments for high-signal patterns — e.g. `"cxo"/"leadership"` → +0.30 for OPQ32r, `"contact center"` → +0.30 for SVAR, `"safety"/"dsi"` → +0.30–0.40 for DSI.
 
 **Diversity filter:** Deduplicates by normalized base name to avoid returning multiple report variants when an instrument is more relevant.
 
@@ -68,20 +68,20 @@ Intent is classified rule-first for latency and reliability:
 
 | Intent | Trigger | Action |
 |--------|---------|--------|
-| `refuse` | Prompt injection / off-topic | Static refusal, no retrieval |
+| `refuse` | Prompt injection / off-topic keywords | Static refusal, no retrieval |
 | `legal_refuse` | "legally required", "does this satisfy" | Specific legal disclaimer |
-| `compare` | "difference between" / "vs" + assessment keyword | Retrieve both items, compare from catalog only |
-| `end` | Confirmation phrases | `end_of_conversation: true`, preserve prior shortlist |
-| `clarify` | Vague first turn | Ask ONE focused question |
+| `compare` | "difference between" / "vs" | Retrieve, compare from catalog only |
+| `end` | Confirmation phrases ("confirmed", "locking it in") | Preserve prior shortlist, `end_of_conversation: true` |
+| `clarify` | Vague first turn, missing role/seniority | Ask ONE focused question |
 | `recommend` | Default | Recommend from retrieval pool |
 
-Clarification behavior was tuned iteratively using the provided traces. The system avoids over-asking via lightweight heuristics for leadership, graduate, safety, and customer-service scenarios, and commits to a recommendation after 2–3 turns regardless.
+Clarification is skipped for roles with sufficient context (safety, admin, contact center, graduate). The system commits to a recommendation after 3 user turns regardless.
 
-On final confirmation turns, the system extracts the previously committed shortlist from conversation history instead of re-running retrieval — preventing shortlist drift on turns like "confirmed" or "locking it in."
+On confirmation turns, the system extracts the previously committed shortlist from conversation history instead of re-running retrieval — preventing shortlist drift.
 
-Low-temperature decoding was used for stable and deterministic outputs. Every recommendation is validated against the retrieval pool before returning, structurally preventing hallucinated URLs.
+Low-temperature decoding (0.2) was used for consistent outputs. Every recommendation URL is validated against the retrieval pool before returning, structurally preventing hallucinated URLs.
 
-LLM inference runs on **LLaMA 3.3 70B** (primary) with **LLaMA 3.1 8B** as a rate-limit fallback via the Groq API.
+LLM inference runs on **LLaMA 3.3 70B** (primary) with **LLaMA 3.1 8B Instant** as a rate-limit fallback via the Groq API.
 
 ---
 
